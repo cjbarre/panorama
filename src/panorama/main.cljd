@@ -1,0 +1,169 @@
+(ns panorama.main
+  (:require ["package:flutter/material.dart" :as m]
+            [cljd.flutter :as f]
+            [cljd.string :as s]))
+
+(defonce db (atom {:items [{:id 1
+                            :title "Create todo list app for Panoramic Software interview"
+                            :description "It should be fairly simple and do A, B, C, etc."}
+                           {:id 2
+                            :title "Follow up with XYZ about the interview"}]
+                   :items-map {1 {:id 1
+                                  :title "Create todo list app for Panoramic Software interview"
+                                  :description "It should be fairly simple and do A, B, C, etc."}
+                               2 {:id 2
+                                  :title "Follow up with XYZ about the interview"}}}))
+
+(defn add-item []
+  (let [{:keys [title] :as item} (-> @db :form :item (assoc :id (gensym)))]
+    (when-not (s/blank? title)
+      (swap! db #(-> %
+                     (update :items conj item)
+                     (update :items-map assoc (:id item) item))))))
+
+(defn edit-item []
+  (let [{:keys [id title] :as item} (-> @db :form :item)
+        old-item (-> db f/<! (get-in [:items-map id]) f/$)]
+    (when (and (not (s/blank? title))
+               (not= (:title old-item) title))
+      (swap! db (fn [db] (-> db
+                             (update :items-map assoc id item)
+                             (update :items (fn [items]
+                                              (mapv #(if (= (:id %) id) item %) items)))))))))
+
+(defn item-title-input []
+  (f/widget
+   :watch [title (-> db f/<! (get-in [:form :item :title]) f/$)]
+   (m/TextFormField
+    .initialValue title
+    .onChanged (fn [value]
+                 (swap! db assoc-in [:form :item :title] value))
+    .style (m/TextStyle
+            .fontSize 22)
+    .maxLines nil
+    .decoration (m/InputDecoration
+                 .border m/InputBorder.none
+                 .hintText "Title"))))
+
+(defn divider []
+  (f/widget
+   (m/Padding .padding (m/EdgeInsets.only .top 10 .bottom 10))
+   (m/Divider
+    .height 1
+    .color (m/Color 0xFF49454F))))
+
+(defn item-description-input
+  []
+  (f/widget
+   :watch [description (-> db f/<! (get-in [:form :item :description]) f/$)]
+   (m/TextFormField
+    .initialValue description
+    .onChanged (fn [value]
+                 (swap! db assoc-in [:form :item :description] value))
+    .style (m/TextStyle
+            .fontSize 16)
+    .maxLines nil
+    .decoration (m/InputDecoration
+                 .border m/InputBorder.none
+                 .hintText "Description"))))
+
+(defn item-form []
+  (f/widget
+   :watch [item-form (-> db f/<! :form :item f/$)]
+   :context ctx
+   :let [theme (m/Theme.of ctx)]
+   (m/Container
+    .padding (m/EdgeInsets.all 10))
+   (m/Column)
+   .children
+   [(item-title-input)
+    (divider)
+    (item-description-input)]))
+
+(defn show-item-bottom-sheet
+  [context]
+  (m/showModalBottomSheet
+   .showDragHandle true
+   .enableDrag true
+   .useSafeArea true
+   .isScrollControlled true
+   .context context
+   .builder (fn [_] (item-form))))
+
+(defn fab []
+  (f/widget
+   :context ctx
+   (m/Padding .padding (m/EdgeInsets.only .bottom 15 .right 15))
+   (m/FloatingActionButton
+    .onPressed (fn []
+                 (await (show-item-bottom-sheet ctx))
+                 (add-item)
+                 (swap! db update :form dissoc :item)))
+   (m/Icon m.Icons/edit)))
+
+(defn todo-item [{:keys [id title] :as item}]
+  (f/widget
+   :key id
+   :context ctx
+   (m/Dismissible .key (m/ValueKey id)
+                  .direction (m/DismissDirection.endToStart)
+                  .onDismissed (fn [_]
+                                 (swap! db (fn [db] (-> db
+                                                        (update :items (fn [items]
+                                                                         (filterv #(not= (:id %) id) items)))))))
+                  .background (m/Container
+                               .color (m/Color 0xFF4A4458)
+                               .alignment m/Alignment.centerRight
+                               .padding (m/EdgeInsets.only .right 20)
+                               .child (m/Icon m/Icons.done)))
+   (m/Card)
+   (m/ListTile
+    .onTap (fn []
+             (swap! db #(assoc-in % [:form :item] item))
+             (await (show-item-bottom-sheet ctx))
+             (edit-item)
+             (swap! db update :form dissoc :item))
+    .title (m/Text title))))
+
+(defn todo-list []
+  (f/widget
+   :watch [items (-> db f/<! :items f/$)]
+   m/Container
+   m/Expanded
+   m/ListView
+   .children
+   (for [item items]
+     (todo-item item))))
+
+(defn no-items []
+  (f/widget
+   m/Center
+   (m/Text "You've been productive!"
+           .style (m/TextStyle
+                   .fontSize 22))))
+
+(defn app []
+  (f/widget
+   :watch [items (-> db f/<! :items f/$)]
+   (if (seq items)
+     (todo-list)
+     (no-items))))
+
+(defn main []
+  (f/run
+   (m/MaterialApp
+    .title "Welcome to Flutter"
+    .theme (m/ThemeData
+            .useMaterial3 true
+            .colorScheme (m/ColorScheme.dark)))
+   .home
+   (m/Scaffold
+    .appBar (m/AppBar
+             .title (m/Text "Panorama"))
+    .floatingActionButton (fab))
+   .body
+   m/Container
+   (m/Column
+    .mainAxisAlignment m/MainAxisAlignment.center)
+   .children
+   [(app)]))
