@@ -1,7 +1,8 @@
 (ns panorama.main
   (:require ["package:flutter/material.dart" :as m]
             [cljd.flutter :as f]
-            [cljd.string :as s]))
+            [cljd.string :as s]
+            [panorama.blah :as blah]))
 
 (defonce db (atom {:items [{:id 1
                             :title "Create todo list app for Panoramic Software interview"
@@ -125,9 +126,8 @@
              (swap! db update :form dissoc :item))
     .title (m/Text title))))
 
-(defn todo-list []
+(defn todo-list [items]
   (f/widget
-   :watch [items (-> db f/<! :items f/$)]
    m/Container
    m/Expanded
    m/ListView
@@ -146,7 +146,7 @@
   (f/widget
    :watch [items (-> db f/<! :items f/$)]
    (if (seq items)
-     (todo-list)
+     (todo-list items)
      (no-items))))
 
 (defn main []
